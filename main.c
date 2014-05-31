@@ -13,9 +13,9 @@
  * to use libopcodes + libbfd:
  * http://www.toothycat.net/wiki/wiki.pl?Binutils/libopcodes
  */
-#define _PR(_tag, ...) do {                               \
+#define _PR(_tag, ...) do {                            \
         fprintf(stderr, "[symscan]" _tag __VA_ARGS__); \
-        fputc('\n', stderr);                              \
+        fputc('\n', stderr);                           \
 } while(0)
 
 #define ERR(...) _PR("[error]", __VA_ARGS__)
@@ -31,12 +31,36 @@
  * data.
  */
 static bfd *bin;
-static asymbol **symbols;
+static asymbol **symbols, **sorted_symbols;
 static struct disassemble_info dis_info;
 
 
 /* Address to the current instruction we are processing */
 static bfd_vma curr_addr, start_addr;
+
+
+/* Given a vm address scan the symbol table  and return the given symbol if
+ * found, and NULL otherwise.
+ */
+static const asymbol *addr_to_symbol(bfd_vma addr)
+{
+    int i = 0;
+
+    /* If we find an exact match return early */
+    while (sorted_symbols[i] && (addr>=bfd_asymbol_value(sorted_symbols[i])))
+      if (addr == bfd_asymbol_value(sorted_symbols[i]))
+        return sorted_symbols[i];
+      else
+        ++i;
+
+    /* If we didn't iterate possibly the first element is correct... */
+    if (i == 0 && addr > bfd_asymbol_value(sorted_symbols[i]))
+      return sorted_symbols[i];
+    else if (i-1 >= 0)
+      return sorted_symbols[i];
+    else
+      return NULL;
+}
 
 
 /* Each insn and all arguments are passed as individual strings:
@@ -53,6 +77,7 @@ static int process_insn(void *stream, const char *fmt, ...)
     va_list va;
     unsigned lineno;
     const char *str, *fname, *fnname;
+    const asymbol *sym;
     static int have_call;
     
     va_start(va, fmt);
@@ -76,7 +101,9 @@ static int process_insn(void *stream, const char *fmt, ...)
             va_end(va);
             return 0;
         }
-        printf("\"%s\" -> \"%s\"\n", fnname, str);
+        sym = addr_to_symbol(curr_addr);
+        printf("    \"%s\" -> \"%s (%s)\"\n",
+               fnname, str, sym ? bfd_asymbol_name(sym) : "N/A");
     }
 
     va_end(va);
@@ -84,11 +111,84 @@ static int process_insn(void *stream, const char *fmt, ...)
 }
 
 
+static void dump_symbols(const asymbol **syms)
+{
+#ifdef DEBUG
+    int i;
+
+    DBG("Dumping symbols:");
+    for (i=0; syms[i]; ++i)
+      DBG("  %d) %s (0x%lx)",
+          i+1, 
+          bfd_asymbol_name(syms[i]),
+          bfd_asymbol_value(syms[i]));
+#endif
+}
+
+/* Predicate to qsort */
+static int cmp_symbol_addr(const void *s1, const void *s2)
+{
+    bfd_vma a = bfd_asymbol_value(*(const asymbol **)s1);
+    bfd_vma b = bfd_asymbol_value(*(const asymbol **)s2);
+    if (a < b)
+      return -1;
+    else if (a == b)
+      return 0;
+    else
+      return 1;
+}
+
+/* Read the BFD and obtain the symbols.  We take a hint from addr2line and
+ * objdump.  If we have no normal symbols (e.g., the case of a striped binary)
+ * then we use the dynamic symbol table.  We only use the latter if there are no
+ * regular symbols.
+ */
+static void get_symbols(bfd *bin)
+{
+    int i, idx, n_syms, size;
+    bool is_dynamic;
+
+    /* Debugging */
+    DBG("Symbols:         %ld", bfd_get_symtab_upper_bound(bin));
+    DBG("Dynamic Symbols: %ld", bfd_get_dynamic_symtab_upper_bound(bin));
+
+    /* Get symbol table size (if no regular syms, get dynamic syms) */
+    is_dynamic = false;
+    size = bfd_get_symtab_upper_bound(bin);
+    if (!size)
+    {
+        if (!(size = bfd_get_dynamic_symtab_upper_bound(bin)))
+          ERR("Could not locate any symbols");
+        is_dynamic = 1;
+    }
+
+    if (!(symbols = malloc(size)))
+      ERR("Could not allocate enough memory to store the symbol table");
+
+    n_syms = (is_dynamic) ? bfd_canonicalize_dynamic_symtab(bin, symbols) :
+                            bfd_canonicalize_symtab(bin, symbols);
+
+    DBG("Loaded %d symbols\n", n_syms);
+
+    /* Sort the symbols for easer searching via location */
+    if (!(sorted_symbols = calloc(n_syms, sizeof(asymbol*))))
+      ERR("Could not allocate enough memory to store a sorted symbol table");
+
+    /* Ignore symbols with a value(address) of 0 */
+    for (i=0, idx=0; i<n_syms; ++i)
+      if (bfd_asymbol_value(symbols[i]) != 0)
+        sorted_symbols[idx++] = symbols[i];
+    qsort(sorted_symbols, idx, sizeof(asymbol *), cmp_symbol_addr);
+
+    /* Debug */
+    dump_symbols((const asymbol **)sorted_symbols);
+}
+
+
 int main(int argc, char **argv)
 {
-    int length, n_syms;
+    int length;
     const char *fname;
-    _Bool is_dynamic;
     asection *text;
     disassembler_ftype dis;
 
@@ -133,30 +233,7 @@ int main(int argc, char **argv)
     /* Suck in .text */
     bfd_malloc_and_get_section(bin, text, &dis_info.buffer);
 
-    /* Debugging */
-    DBG("Symbols:         %ld", bfd_get_symtab_upper_bound(bin));
-    DBG("Dynamic Symbols: %ld", bfd_get_dynamic_symtab_upper_bound(bin));
-
-    /* Get symbols (if no regular syms, get dynamic syms) */
-    is_dynamic = false;
-    n_syms = bfd_get_symtab_upper_bound(bin);
-    if (!n_syms)
-    {
-        if (!(n_syms = bfd_get_dynamic_symtab_upper_bound(bin)))
-          ERR("Could not locate any symbols");
-        is_dynamic = 1;
-    }
-
-    if (!(symbols = malloc(n_syms)))
-      ERR("Could not allocate enough room to store the symbol table");
-
-    if (is_dynamic)
-      n_syms = bfd_canonicalize_dynamic_symtab(bin, symbols);
-    else
-      n_syms = bfd_canonicalize_symtab(bin, symbols);
-
-    DBG("Loaded %d symbols\n", n_syms);
-
+    get_symbols(bin);
     /* Create a handle to the disassembler */
     if (!(dis = disassembler(bin)))
     {
