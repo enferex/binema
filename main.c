@@ -92,9 +92,11 @@ static int process_insn(void *stream, const char *fmt, ...)
             va_end(va);
             return 0;
         }
+
+        /* Convert the string representation of the call operand to a value */
         sym = addr_to_symbol(strtoll(str, NULL, 16));
-        printf("    \"%s\" -> \"%s (%s)\"\n",
-               fnname, str, sym ? bfd_asymbol_name(sym) : "N/A");
+        printf("\t\"%s\" -> \"%s\"\n",
+               fnname, sym ? bfd_asymbol_name(sym) : str);
     }
 
     va_end(va);
