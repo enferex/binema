@@ -26,6 +26,7 @@
 #define DBG(...)
 #endif
 
+
 /* Globals accessable from callbacks which have no other means of accessing this
  * data.
  */
@@ -33,8 +34,10 @@ static bfd *bin;
 static asymbol **symbols;
 static struct disassemble_info dis_info;
 
+
 /* Address to the current instruction we are processing */
 static bfd_vma curr_addr, start_addr;
+
 
 /* Each insn and all arguments are passed as individual strings:
  * We only care about calls and returns.
