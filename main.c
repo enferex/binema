@@ -12,12 +12,18 @@
  * to use libopcodes + libbfd:
  * http://www.toothycat.net/wiki/wiki.pl?Binutils/libopcodes
  */
-
-#define ERR(...) do {\
-        fprintf(stderr, "[symscan] " __VA_ARGS__);\
-        fputc('\n', stderr); \
-        exit(EXIT_FAILURE);\
+#define _PR(_tag, ...) do {                               \
+        fprintf(stderr, "[symscan]" _tag __VA_ARGS__); \
+        fputc('\n', stderr);                              \
 } while(0)
+
+#define ERR(...) _PR("[error]", __VA_ARGS__)
+
+#ifdef DEBUG
+#define DBG(...) _PR("[debug]", __VA_ARGS__)
+#else
+#define DBG(...)
+#endif
 
 /* Globals accessable from callbacks which have no other means of accessing this
  * data.

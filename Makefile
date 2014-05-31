@@ -1,6 +1,6 @@
 APP = cgen
 CC = gcc
-CFLAGS = -g3 -O0 -Wall
+CFLAGS = -g3 -O0 -Wall -DDEBUG
 SOURCES = main.c
 OBJS = $(SOURCES:.c=.o)
 LIBS = -ldl -lz -lbfd -lopcodes -liberty
