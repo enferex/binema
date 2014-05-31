@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #define PACKAGE         42  /* Defined to ignore config.h include in bfd.h */
 #define PACKAGE_VERSION 42  /* Defined to ignore config.h include in bfd.h */
 #include <bfd.h>
@@ -65,7 +66,8 @@ static int process_insn(void *stream, const char *fmt, ...)
     else if (have_call)
     {
         have_call = 0;
-        if (!bfd_find_nearest_line(bin, dis_info.section, symbols, curr_addr - start_addr,
+        if (!bfd_find_nearest_line(bin, dis_info.section, symbols,
+                                   curr_addr - start_addr,
                                    &fname, &fnname, &lineno))
         {
             va_end(va);
@@ -81,9 +83,9 @@ static int process_insn(void *stream, const char *fmt, ...)
 
 int main(int argc, char **argv)
 {
-    int length;
+    int length, n_syms;
     const char *fname;
-    //bfd_vma start_addr;
+    _Bool is_dynamic;
     asection *text;
     disassembler_ftype dis;
 
@@ -128,13 +130,29 @@ int main(int argc, char **argv)
     /* Suck in .text */
     bfd_malloc_and_get_section(bin, text, &dis_info.buffer);
 
-    /* Get symbols */
-    symbols = malloc(bfd_get_symtab_upper_bound(bin));
-    if (!symbols)
-        ERR("Could not allocate enough room to store the symbol table");
+    /* Debugging */
+    DBG("Symbols:         %ld", bfd_get_symtab_upper_bound(bin));
+    DBG("Dynamic Symbols: %ld", bfd_get_dynamic_symtab_upper_bound(bin));
 
-    if (!bfd_canonicalize_symtab(bin, symbols))
-        ERR("Could not obtain the symbol table");
+    /* Get symbols (if no regular syms, get dynamic syms) */
+    is_dynamic = false;
+    n_syms = bfd_get_symtab_upper_bound(bin);
+    if (!n_syms)
+    {
+        if (!(n_syms = bfd_get_dynamic_symtab_upper_bound(bin)))
+          ERR("Could not locate any symbols");
+        is_dynamic = 1;
+    }
+
+    if (!(symbols = malloc(n_syms)))
+      ERR("Could not allocate enough room to store the symbol table");
+
+    if (is_dynamic)
+      n_syms = bfd_canonicalize_dynamic_symtab(bin, symbols);
+    else
+      n_syms = bfd_canonicalize_symtab(bin, symbols);
+
+    DBG("Loaded %d symbols\n", n_syms);
 
     /* Create a handle to the disassembler */
     if (!(dis = disassembler(bin)))
