@@ -44,22 +44,13 @@ static bfd_vma curr_addr, start_addr;
  */
 static const asymbol *addr_to_symbol(bfd_vma addr)
 {
-    int i = 0;
+    int i;
 
     /* If we find an exact match return early */
-    while (sorted_symbols[i] && (addr>=bfd_asymbol_value(sorted_symbols[i])))
+    for (i=0; sorted_symbols[i]; ++i)
       if (addr == bfd_asymbol_value(sorted_symbols[i]))
         return sorted_symbols[i];
-      else
-        ++i;
-
-    /* If we didn't iterate possibly the first element is correct... */
-    if (i == 0 && addr > bfd_asymbol_value(sorted_symbols[i]))
-      return sorted_symbols[i];
-    else if (i-1 >= 0)
-      return sorted_symbols[i];
-    else
-      return NULL;
+    return NULL;
 }
 
 
@@ -101,7 +92,7 @@ static int process_insn(void *stream, const char *fmt, ...)
             va_end(va);
             return 0;
         }
-        sym = addr_to_symbol(curr_addr);
+        sym = addr_to_symbol(strtoll(str, NULL, 16));
         printf("    \"%s\" -> \"%s (%s)\"\n",
                fnname, str, sym ? bfd_asymbol_name(sym) : "N/A");
     }
@@ -125,6 +116,7 @@ static void dump_symbols(const asymbol **syms)
 #endif
 }
 
+
 /* Predicate to qsort */
 static int cmp_symbol_addr(const void *s1, const void *s2)
 {
@@ -137,6 +129,7 @@ static int cmp_symbol_addr(const void *s1, const void *s2)
     else
       return 1;
 }
+
 
 /* Read the BFD and obtain the symbols.  We take a hint from addr2line and
  * objdump.  If we have no normal symbols (e.g., the case of a striped binary)
@@ -234,6 +227,7 @@ int main(int argc, char **argv)
     bfd_malloc_and_get_section(bin, text, &dis_info.buffer);
 
     get_symbols(bin);
+
     /* Create a handle to the disassembler */
     if (!(dis = disassembler(bin)))
     {
