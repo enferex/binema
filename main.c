@@ -147,18 +147,25 @@ static void get_symbols(bfd *bin)
     bool is_dynamic;
 
     /* Debugging */
-    DBG("Symbols:         %ld", bfd_get_symtab_upper_bound(bin));
-    DBG("Dynamic Symbols: %ld", bfd_get_dynamic_symtab_upper_bound(bin));
+    DBG("Symbol table upper bound:         %ld bytes",
+        bfd_get_symtab_upper_bound(bin));
+    DBG("Dynamic symbol table upper bound: %ld bytes",
+        bfd_get_dynamic_symtab_upper_bound(bin));
 
-    /* Get symbol table size (if no regular syms, get dynamic syms) */
+    /* Get symbol table size (if no regular syms, get dynamic syms)
+    * There is always a sentinel symbol (e.g., sizeof(asymbol*)
+    */
     is_dynamic = false;
-    size = bfd_get_symtab_upper_bound(bin);
-    if (!size)
+    if ((size = bfd_get_symtab_upper_bound(bin)) <= sizeof(asymbol*))
     {
-        if (!(size = bfd_get_dynamic_symtab_upper_bound(bin)))
-          ERR("Could not locate any symbols");
+        if ((size=bfd_get_dynamic_symtab_upper_bound(bin)) <= sizeof(asymbol*))
+          ERR("Could not locate any symbols to use");
         is_dynamic = 1;
     }
+
+    /* TODO: For now exit if we only have dynamic symbols */
+    if (is_dynamic)
+      ERR("Could not locate any symbols (dynamic symbols not supported)");
 
     if (!(symbols = malloc(size)))
       ERR("Could not allocate enough memory to store the symbol table");
