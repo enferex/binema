@@ -167,7 +167,7 @@ static void get_symbols(bfd *bin)
     if (!n_syms)
       ERR("Could not locate any symbols");
 
-    DBG("Loaded %d symbols\n", n_syms);
+    DBG("Loaded %d symbols", n_syms);
 
     /* Sort the symbols for easer searching via location */
     if (!(sorted_symbols = calloc(n_syms, sizeof(asymbol*))))
