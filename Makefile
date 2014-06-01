@@ -17,4 +17,4 @@ test: $(APP) test.c
 	./$(APP) ./$@
 
 clean:
-	$(RM) $(APP) $(OBJS)
+	$(RM) $(APP) $(OBJS) test
