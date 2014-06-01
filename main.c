@@ -165,7 +165,7 @@ static void get_symbols(bfd *bin)
                             bfd_canonicalize_symtab(bin, symbols);
 
     if (!n_syms)
-      ERR("No symbols found");
+      ERR("Could not locate any symbols");
 
     DBG("Loaded %d symbols\n", n_syms);
 
