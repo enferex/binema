@@ -164,6 +164,9 @@ static void get_symbols(bfd *bin)
     n_syms = (is_dynamic) ? bfd_canonicalize_dynamic_symtab(bin, symbols) :
                             bfd_canonicalize_symtab(bin, symbols);
 
+    if (!n_syms)
+      ERR("No symbols found");
+
     DBG("Loaded %d symbols\n", n_syms);
 
     /* Sort the symbols for easer searching via location */

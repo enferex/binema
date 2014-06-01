@@ -9,7 +9,7 @@ LIBS = -ldl -lz -lbfd -lopcodes -liberty
 	$(CC) -c $^ $(CFLAGS)
 
 $(APP): $(OBJS)
-	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
+	$(CC) -o $@ $^ $(CFLAGS) $(EXTRA_CFLAGS) $(LIBS)
 
 .PHONY: test
 test: $(APP) test.c
