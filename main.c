@@ -16,12 +16,13 @@
 #define _PR(_tag, ...) do {                            \
         fprintf(stderr, "[symscan]" _tag __VA_ARGS__); \
         fputc('\n', stderr);                           \
+        exit(EXIT_FAILURE);                            \
 } while(0)
 
-#define ERR(...) _PR("[error]", __VA_ARGS__)
+#define ERR(...) _PR("[error] ", __VA_ARGS__)
 
 #ifdef DEBUG
-#define DBG(...) _PR("[debug]", __VA_ARGS__)
+#define DBG(...) _PR("[debug] ", __VA_ARGS__)
 #else
 #define DBG(...)
 #endif
