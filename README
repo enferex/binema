@@ -1,5 +1,5 @@
 binema: Executable to callgraph generator
-=======================================
+=========================================
 
 
 What
@@ -56,6 +56,7 @@ at the sources for objdump and addr2line (both provided by binutils).
 
 Another very valuable resource is the following:
 <http://www.toothycat.net/wiki/wiki.pl?Binutils/libopcodes>
+
 
 Contact
 =======
