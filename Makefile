@@ -1,4 +1,4 @@
-APP = cgen
+APP = binema
 CC = gcc
 CFLAGS = -g3 -O0 -Wall #-DDEBUG
 SOURCES = main.c
