@@ -14,7 +14,7 @@ $(APP): $(OBJS)
 .PHONY: test
 test: $(APP) test.c
 	$(CC) -o $@ test.c -g3 -O0
-	./$(APP) ./$@
+	./$(APP) -f ./$@ -d
 
 clean:
 	$(RM) $(APP) $(OBJS) test

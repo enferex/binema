@@ -26,10 +26,17 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <getopt.h>
+#include <unistd.h>
 #define PACKAGE         42  /* Defined to ignore config.h include in bfd.h */
 #define PACKAGE_VERSION 42  /* Defined to ignore config.h include in bfd.h */
 #include <bfd.h>
 #include <dis-asm.h>
+
+#ifdef USE_IGRAPH
+#include <igraph/igraph.h>
+#endif
 
 
 /* Special thanks to the following for providing a very helpful example of how
@@ -53,6 +60,37 @@
 #endif
 
 
+/* A container to keep a list of nodes... */
+struct _func_t;
+typedef struct _node_list_t 
+{
+   struct _func_t *func;
+    struct _node_list_t *next;
+} node_list_t;
+
+
+/* A node in a callgraph is a function */
+typedef struct _func_t
+{
+    const asymbol  *sym;  /* Symbol name for the function        */
+    node_list_t *callees; /* Other functions this function calls */
+
+    /* If no symbol 'sym' store the str from disassembly here
+     * 'str' represents the disassembly string, usually an address with no
+     * associated symbol name
+     */
+    const char *str;
+} func_t;
+
+
+/* Data type to store our callgraph */
+typedef struct _graph_t
+{
+    const char *filename;
+    node_list_t *funcs;
+} graph_t;
+
+
 /* Globals accessable from callbacks which have no other means of accessing this
  * data.
  */
@@ -63,6 +101,19 @@ static struct disassemble_info dis_info;
 
 /* Address to the current instruction we are processing */
 static bfd_vma curr_addr, start_addr;
+
+
+static void usage(const char *execname)
+{
+    printf("Usage: %s [-f executable] [-d] [-s]\n"
+           "  -f executable: File to create a callgraph from\n"
+           "  -d:            Output callgraph in dot format\n"
+#ifdef USE_IGRAPH
+           "  -s:            Output graph summary\n"
+#endif
+           , execname);
+    exit(EXIT_SUCCESS);
+}
 
 
 /* Given a vm address scan the symbol table  and return the given symbol if
@@ -76,7 +127,121 @@ static const asymbol *addr_to_symbol(bfd_vma addr)
     for (i=0; sorted_symbols[i]; ++i)
       if (addr == bfd_asymbol_value(sorted_symbols[i]))
         return sorted_symbols[i];
+
     return NULL;
+}
+
+
+/* Search the symbol table for the symbol that matches the given string */
+static const asymbol *str_to_symbol(const char *name)
+{
+    int i;
+
+    for (i=0; symbols[i]; ++i)
+      if (strcmp(symbols[i]->name, name) == 0)
+        return symbols[i];
+
+    return NULL;
+}
+
+
+/* Create and add a node to the graph (this does not check uniqueness) */
+static func_t *add_node(graph_t *graph, const asymbol *sym, const char *str)
+{
+    func_t *func;
+    node_list_t *list;
+
+    if (!(func =  calloc(1, sizeof(func_t))) ||
+        !(list = calloc(1, sizeof(node_list_t))))
+    {
+        fprintf(stderr, "Ran out of memory... game over!\n");
+        exit(-ENOMEM);
+    }
+
+    /* Initialzie the node */
+    func->sym = sym;
+    func->str = str;
+    
+    /* Add the node */
+    list->func = func;
+    list->next = graph->funcs;
+    graph->funcs = list;
+    return func;
+}
+
+
+/* Search the 'graph' for 'func'.  If 'func' cannot be found a new node is
+ * instantiated for that node.
+ * TODO: Hash function names for quick lookup (e.g., remove strcmp)
+ */
+static func_t *find_func(graph_t *graph, const asymbol *func)
+{
+    const node_list_t *node;
+
+    for (node=graph->funcs; node; node=node->next)
+      if (node->func->sym == func)
+        return node->func;
+
+    /* Could not locate caller, so create a new node for this caller */
+    return add_node(graph, func, NULL);
+}
+
+
+/* Search the 'graph' for 'str'  If that str does not exist then it will be
+ * added as a new node to the graph.
+ */
+static func_t *find_func_str(graph_t *graph, const char *str)
+{
+    const node_list_t *node;
+
+    if (!str)
+      return NULL;
+
+    for (node=graph->funcs; node; node=node->next)
+      if (node->func->str && strcmp(node->func->str, str) == 0)
+        return node->func;
+
+    /* Could not locate caller, so create a new node for this caller */
+    return add_node(graph, NULL, str);
+}
+
+
+/* Given a callee and caller, return the callee if it already exists in the
+ * caller
+ */
+static const func_t *find_callee(const func_t *caller, const func_t *callee)
+{
+    const node_list_t *node;
+
+    for (node=caller->callees; node; node=node->next)
+      if (node->func->sym == callee->sym)
+        return node->func;
+
+    return NULL;
+}
+
+
+/* Add a callee (to caller function if the caller does not already have an
+ * instance of the callee).
+ */
+static void add_callee(func_t *caller, func_t *callee)
+{
+    node_list_t *list;
+
+    /* If we have already added this callee... */
+    if (find_callee(caller, callee))
+      return;
+
+    if (!(list = calloc(1, sizeof(node_list_t))))
+    {
+        fprintf(stderr, "Could not allocate enough memory to contain a node\n");
+        exit(-ENOMEM);
+    }
+
+    /* Add the callee to the list and add the list to the callees list */
+    list->func = callee;
+    list->next = caller->callees;
+    caller->callees = list;
 }
 
 
@@ -96,6 +261,8 @@ static int process_insn(void *stream, const char *fmt, ...)
     const char *str, *fname, *fnname;
     const asymbol *sym;
     static int have_call;
+    func_t *caller, *callee;
+    graph_t *graph;
     
     va_start(va, fmt);
     str = va_arg(va, char *);
@@ -106,6 +273,7 @@ static int process_insn(void *stream, const char *fmt, ...)
         return 0;
     }
 
+    /* Only look for call instructions... */
     if (strncmp(str, "call", strlen("call")) == 0)
       have_call = 1;
     else if (have_call)
@@ -119,10 +287,12 @@ static int process_insn(void *stream, const char *fmt, ...)
             return 0;
         }
 
-        /* Convert the string representation of the call operand to a value */
+        /* Create a new node to represent the callee and add it to the caller */
+        graph = *(graph_t **)dis_info.application_data;
         sym = addr_to_symbol(strtoll(str, NULL, 16));
-        printf("\t\"%s\" -> \"%s\"\n",
-               fnname, sym ? bfd_asymbol_name(sym) : str);
+        caller = find_func(graph, str_to_symbol(fnname));
+        callee = sym ? find_func(graph, sym) : find_func_str(graph, str);
+        add_callee(caller, callee);
     }
 
     va_end(va);
@@ -216,21 +386,29 @@ static void get_symbols(bfd *bin)
 }
 
 
-int main(int argc, char **argv)
+/* Instantaite a new graph instance */
+static graph_t *new_graph(const char *filename)
 {
-    int length;
-    const char *fname;
-    asection *text;
-    disassembler_ftype dis;
+    graph_t *g = calloc(1, sizeof(graph_t));
 
-    if (argc != 2)
+    if (!g || !(g->filename = strdup(filename)))
     {
-        printf("Usage: %s <executable>\n", argv[0]);
-        exit(EXIT_SUCCESS);
+        fprintf(stderr, "Not enough memory to create a graph\n");
+        exit(-ENOMEM);
     }
 
-    fname = argv[1];
-    
+    return g;
+}
+
+
+/* Open the file and use libopcodes + libfd to create a callgraph */
+static graph_t *build_graph(const char *fname)
+{
+    int length;
+    asection *text;
+    graph_t *graph;
+    disassembler_ftype dis;
+
     /* Initialize the binary description (needed for disassembly parsing) */ 
     bfd_init();
     if (!(bin = bfd_openr(fname, NULL)))
@@ -259,6 +437,8 @@ int main(int argc, char **argv)
     dis_info.section = text;
     dis_info.buffer_vma = text->vma;
     dis_info.buffer_length = text->size;
+    graph = new_graph(fname);
+    dis_info.application_data = &graph;
     disassemble_init_for_target(&dis_info);
 
     /* Suck in .text */
@@ -273,9 +453,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    /* dot output */
-    printf("digraph \"%s\"{\n", fname);
-
+    /* Start disassembly... */
     curr_addr = start_addr = bfd_get_start_address(bin);
     while ((length = dis(curr_addr, &dis_info)))
     {
@@ -285,7 +463,69 @@ int main(int argc, char **argv)
     }
 
     bfd_close(bin);
-    printf("}\n");
 
+    return graph;
+}
+
+
+/* Output graph in dot format */
+static void output_dot(const graph_t *graph)
+{
+    const node_list_t *caller, *callee;
+
+    printf("digraph \"%s\"{\n", graph->filename);
+    for (caller=graph->funcs; caller; caller=caller->next)
+      for (callee=caller->func->callees; callee; callee=callee->next)
+        printf("\t\"%s\" -> \"%s\"\n",
+               caller->func->sym ? bfd_asymbol_name(caller->func->sym) : "N/A",
+               callee->func->sym ? bfd_asymbol_name(callee->func->sym) : "N/A");
+    printf("}\n");
+}
+
+
+/* Output graph summary */
+static void output_igraph_summary(const graph_t *graph)
+{
+#ifdef USE_IGRAPH
+    // TODO
+#endif
+}
+
+
+int main(int argc, char **argv)
+{
+    int opt;
+    bool do_dot_output, do_igraph_summary;
+    const char *fname;
+    graph_t *graph;
+
+    /* Default args */
+    fname = NULL;
+    do_igraph_summary = do_dot_output = false;
+
+    while ((opt = getopt(argc, argv, "dsf:")) != -1)
+    {
+        switch (opt)
+        {
+            case 'f': fname = optarg; break;
+            case 'd': do_dot_output = true; break;
+            case 's': do_igraph_summary = true; break;
+            default:  usage(argv[0]); break;
+        }
+    }
+
+    /* Sanity */
+    if (!fname)
+      usage(argv[0]);
+
+    /* Create a callgraph */
+    graph = build_graph(fname);
+
+    /* Output the results */
+    if (do_dot_output)
+      output_dot(graph);
+    if (do_igraph_summary)
+      output_igraph_summary(graph);
+    
     return 0;
 }
