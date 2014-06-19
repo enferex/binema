@@ -465,8 +465,6 @@ static graph_t *build_graph(const char *fname)
             break;
     }
 
-    bfd_close(bin);
-
     return graph;
 }
 
@@ -561,6 +559,10 @@ int main(int argc, char **argv)
       output_dot(graph);
     if (do_igraph_summary)
       output_igraph_summary(graph, fname);
+   
+    /* Done */ 
+    free(graph);
+    bfd_close(bin);
     
     return 0;
 }
