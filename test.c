@@ -7,7 +7,6 @@ static void bar(void)
 
 static void foo(const char *str)
 {
-//    printf("%s\n", str);
     bar();
 }
 

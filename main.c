@@ -61,10 +61,11 @@
 
 
 /* A container to keep a list of nodes... */
+static unsigned id_pool;
 struct _func_t;
 typedef struct _node_list_t 
 {
-   struct _func_t *func;
+    struct _func_t *func;
     struct _node_list_t *next;
 } node_list_t;
 
@@ -72,8 +73,9 @@ typedef struct _node_list_t
 /* A node in a callgraph is a function */
 typedef struct _func_t
 {
-    const asymbol  *sym;  /* Symbol name for the function        */
-    node_list_t *callees; /* Other functions this function calls */
+    const asymbol  *sym;  /* Symbol name for the function         */
+    node_list_t *callees; /* Other functions this function calls  */
+    unsigned  id;         /* Unique number for each func instance */
 
     /* If no symbol 'sym' store the str from disassembly here
      * 'str' represents the disassembly string, usually an address with no
@@ -159,6 +161,7 @@ static func_t *add_node(graph_t *graph, const asymbol *sym, const char *str)
     }
 
     /* Initialzie the node */
+    func->id = id_pool++;
     func->sym = sym;
     func->str = str;
     
@@ -483,11 +486,43 @@ static void output_dot(const graph_t *graph)
 }
 
 
+/* Count the number of edges in graph */
+static inline int count_edges(const graph_t *graph)
+{
+    return id_pool;
+}
+
+
 /* Output graph summary */
-static void output_igraph_summary(const graph_t *graph)
+static void output_igraph_summary(const graph_t *graph, const char *fname)
 {
 #ifdef USE_IGRAPH
-    // TODO
+    igraph_t ig;
+    igraph_vector_t edges;
+    igraph_real_t radius;
+    const node_list_t *caller, *callee;
+
+    /* Setup error handling */
+    igraph_set_error_handler(igraph_error_handler_abort);
+
+    /* id_pool can be used as a count for number of verticies */
+    igraph_empty(&ig, id_pool, IGRAPH_DIRECTED);
+    
+    /* Add in the edges individually */
+    for (caller=graph->funcs; caller; caller=caller->next)
+      for (callee=caller->func->callees; callee; callee=callee->next)
+        igraph_add_edge(&ig, caller->func->id, callee->func->id);
+
+    /* Summarize */
+    igraph_radius(&ig, &radius, IGRAPH_ALL);
+    printf("igraph summary: %s\n", fname);
+    printf("  * Number of Verticies: %d\n", igraph_vcount(&ig));
+    printf("  * Number of Edges:     %d\n", igraph_ecount(&ig));
+    printf("  * Radius:              %f\n", radius);
+
+    /* Cleanup */
+    igraph_vector_destroy(&edges);
+    igraph_destroy(&ig);
 #endif
 }
 
@@ -525,7 +560,7 @@ int main(int argc, char **argv)
     if (do_dot_output)
       output_dot(graph);
     if (do_igraph_summary)
-      output_igraph_summary(graph);
+      output_igraph_summary(graph, fname);
     
     return 0;
 }
