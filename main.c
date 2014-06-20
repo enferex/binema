@@ -163,7 +163,14 @@ static func_t *add_node(graph_t *graph, const asymbol *sym, const char *str)
     /* Initialzie the node */
     func->id = id_pool++;
     func->sym = sym;
-    func->str = str;
+
+    /* Determine the symbol name */
+    if (!str && sym)
+      func->str = strdup(bfd_asymbol_name(sym));
+    else if (str)
+        func->str = strdup(str);
+    else
+      func->str = strdup("N/A");
     
     /* Add the node */
     list->func = func;
@@ -477,9 +484,7 @@ static void output_dot(const graph_t *graph)
     printf("digraph \"%s\"{\n", graph->filename);
     for (caller=graph->funcs; caller; caller=caller->next)
       for (callee=caller->func->callees; callee; callee=callee->next)
-        printf("\t\"%s\" -> \"%s\"\n",
-               caller->func->sym ? bfd_asymbol_name(caller->func->sym) : "N/A",
-               callee->func->sym ? bfd_asymbol_name(callee->func->sym) : "N/A");
+        printf("\t\"%s\" -> \"%s\"\n", caller->func->str, callee->func->str);
     printf("}\n");
 }
 
