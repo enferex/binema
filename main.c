@@ -44,7 +44,7 @@
  * http://www.toothycat.net/wiki/wiki.pl?Binutils/libopcodes
  */
 #define _PR(_tag, ...) do {                            \
-        fprintf(stderr, "[symscan]" _tag __VA_ARGS__); \
+        fprintf(stderr, "[binema]" _tag __VA_ARGS__); \
         fputc('\n', stderr);                           \
 } while(0)
 
