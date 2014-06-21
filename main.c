@@ -509,13 +509,16 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 #ifdef USE_IGRAPH
     igraph_t ig;
     igraph_vs_t vs;
-    igraph_integer_t n_clusters;
+    igraph_integer_t integer;
     igraph_real_t radius;
     igraph_vector_t vec;
     const node_list_t *caller, *callee;
 
     /* Setup error handling */
     igraph_set_error_handler(igraph_error_handler_abort);
+#ifndef DEBUG
+    igraph_set_warning_handler(igraph_warning_handler_ignore);
+#endif
 
     /* id_pool can be used as a count for number of verticies */
     igraph_empty(&ig, id_pool, IGRAPH_DIRECTED);
@@ -534,17 +537,24 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
     if (main_id)
     {
         /* Nodes connected to main (including main) */
-        igraph_vector_init(&vec, 1);
+        igraph_vector_init(&vec, 0);
         igraph_vs_1(&vs, main_id);
         igraph_neighborhood_size(&ig, &vec, vs, 1, IGRAPH_ALL);
         printf("  * main() Neighborhood: %f\n", VECTOR(vec)[0]);
-
-        /* Connected components */
-        igraph_clusters(&ig, NULL, NULL, &n_clusters, IGRAPH_WEAK);
-        printf("  * Weak Clusters:       %d\n", n_clusters);
-        igraph_clusters(&ig, NULL, NULL, &n_clusters, IGRAPH_WEAK);
-        printf("  * Strong Clusters:     %d\n", n_clusters);
     }
+
+    /* Cliques */
+    igraph_clique_number(&ig, &integer);
+    printf("  * Clique Number:       %d\n", integer);
+
+    /* Connected components */
+    igraph_clusters(&ig, NULL, NULL, &integer, IGRAPH_WEAK);
+    printf("  * Weakly Connected Components:   %d\n", integer);
+    igraph_clusters(&ig, NULL, NULL, &integer, IGRAPH_STRONG);
+    printf("  * Strongly Connected Components: %d\n", integer);
+
+    /* Cleanup */
+    igraph_vector_destroy(&vec);
 
     /* Cleanup */
     igraph_destroy(&ig);
