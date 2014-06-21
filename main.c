@@ -541,6 +541,7 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
         igraph_vs_1(&vs, main_id);
         igraph_neighborhood_size(&ig, &vec, vs, 1, IGRAPH_ALL);
         printf("  * main() Neighborhood: %f\n", VECTOR(vec)[0]);
+        igraph_vector_destroy(&vec);
     }
 
     /* Cliques */
@@ -552,9 +553,6 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
     printf("  * Weakly Connected Components:   %d\n", integer);
     igraph_clusters(&ig, NULL, NULL, &integer, IGRAPH_STRONG);
     printf("  * Strongly Connected Components: %d\n", integer);
-
-    /* Cleanup */
-    igraph_vector_destroy(&vec);
 
     /* Cleanup */
     igraph_destroy(&ig);
