@@ -8,13 +8,13 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 2 of the License, or (at
  * your option) any later version.
- *             
+ *
  * This program is distributed in the hope that it will be
  * useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
  * PURPOSE.  See the GNU General Public License for more
  * details.
- *                             
+ *
  * You should have received a copy of the GNU
  * General Public License along with this program.  If not, see
  * <http://www.gnu.org/licenses/>.
@@ -60,10 +60,13 @@
 #endif
 
 
-/* A container to keep a list of nodes... */
-static unsigned id_pool;
+/* A container to keep a list of nodes.
+ * id values start at 1, 0 represents an invalid id
+ */
+static unsigned id_pool = 1;
+static unsigned main_id = 0;
 struct _func_t;
-typedef struct _node_list_t 
+typedef struct _node_list_t
 {
     struct _func_t *func;
     struct _node_list_t *next;
@@ -171,7 +174,11 @@ static func_t *add_node(graph_t *graph, const asymbol *sym, const char *str)
         func->str = strdup(str);
     else
       func->str = strdup("N/A");
-    
+
+    /* main() check */
+    if (strcmp("main", func->str) == 0)
+      main_id = func->id;
+
     /* Add the node */
     list->func = func;
     list->next = graph->funcs;
@@ -257,13 +264,13 @@ static void add_callee(func_t *caller, func_t *callee)
 
 /* Each insn and all arguments are passed as individual strings:
  * We only care about calls and returns.
- * 
+ *
  * We look for call and the next value, which should be the address/function
  * being called.
  *
  * We also look for 'ret' and the next address will be the beginning of the new
  * function.
- */ 
+ */
 static int process_insn(void *stream, const char *fmt, ...)
 {
     va_list va;
@@ -273,7 +280,7 @@ static int process_insn(void *stream, const char *fmt, ...)
     static int have_call;
     func_t *caller, *callee;
     graph_t *graph;
-    
+
     va_start(va, fmt);
     str = va_arg(va, char *);
 
@@ -318,7 +325,7 @@ static void dump_symbols(const asymbol **syms)
     DBG("Dumping symbols:");
     for (i=0; syms[i]; ++i)
       DBG("  %d) %s (0x%lx)",
-          i+1, 
+          i+1,
           bfd_asymbol_name(syms[i]),
           bfd_asymbol_value(syms[i]));
 #endif
@@ -419,14 +426,14 @@ static graph_t *build_graph(const char *fname)
     graph_t *graph;
     disassembler_ftype dis;
 
-    /* Initialize the binary description (needed for disassembly parsing) */ 
+    /* Initialize the binary description (needed for disassembly parsing) */
     bfd_init();
     if (!(bin = bfd_openr(fname, NULL)))
     {
         bfd_perror("Error opening executable");
         exit(EXIT_FAILURE);
     }
-    
+
     if (!bfd_check_format(bin, bfd_object))
     {
         bfd_perror("Bad format (expected object)");
@@ -501,8 +508,10 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 {
 #ifdef USE_IGRAPH
     igraph_t ig;
-    igraph_vector_t edges;
+    igraph_vs_t vs;
+    igraph_integer_t n_clusters;
     igraph_real_t radius;
+    igraph_vector_t vec;
     const node_list_t *caller, *callee;
 
     /* Setup error handling */
@@ -510,7 +519,7 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 
     /* id_pool can be used as a count for number of verticies */
     igraph_empty(&ig, id_pool, IGRAPH_DIRECTED);
-    
+
     /* Add in the edges individually */
     for (caller=graph->funcs; caller; caller=caller->next)
       for (callee=caller->func->callees; callee; callee=callee->next)
@@ -522,9 +531,22 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
     printf("  * Number of Verticies: %d\n", igraph_vcount(&ig));
     printf("  * Number of Edges:     %d\n", igraph_ecount(&ig));
     printf("  * Radius:              %f\n", radius);
+    if (main_id)
+    {
+        /* Nodes connected to main (including main) */
+        igraph_vector_init(&vec, 1);
+        igraph_vs_1(&vs, main_id);
+        igraph_neighborhood_size(&ig, &vec, vs, 1, IGRAPH_ALL);
+        printf("  * main() Neighborhood: %f\n", VECTOR(vec)[0]);
+
+        /* Connected components */
+        igraph_clusters(&ig, NULL, NULL, &n_clusters, IGRAPH_WEAK);
+        printf("  * Weak Clusters:       %d\n", n_clusters);
+        igraph_clusters(&ig, NULL, NULL, &n_clusters, IGRAPH_WEAK);
+        printf("  * Strong Clusters:     %d\n", n_clusters);
+    }
 
     /* Cleanup */
-    igraph_vector_destroy(&edges);
     igraph_destroy(&ig);
 #endif
 }
@@ -564,10 +586,10 @@ int main(int argc, char **argv)
       output_dot(graph);
     if (do_igraph_summary)
       output_igraph_summary(graph, fname);
-   
-    /* Done */ 
+
+    /* Done */
     free(graph);
     bfd_close(bin);
-    
+
     return 0;
 }

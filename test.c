@@ -14,5 +14,6 @@ int main(void)
 {
     const char *s = "Foo!";
     foo(s);
+    bar();
     return 0;
 }
