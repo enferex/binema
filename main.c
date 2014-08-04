@@ -143,6 +143,9 @@ static const asymbol *str_to_symbol(const char *name)
 {
     int i;
 
+    if (!name)
+      return NULL;
+
     for (i=0; symbols[i]; ++i)
       if (strcmp(symbols[i]->name, name) == 0)
         return symbols[i];
