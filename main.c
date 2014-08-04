@@ -112,6 +112,7 @@ static void usage(const char *execname)
 {
     printf("Usage: %s [-f executable] [-d] [-s]\n"
            "  -f executable: File to create a callgraph from\n"
+           "  -c             Output callgraph in cypher format\n"
            "  -d:            Output callgraph in dot format\n"
 #ifdef USE_IGRAPH
            "  -s:            Output graph summary\n"
@@ -483,6 +484,36 @@ static graph_t *build_graph(const char *fname)
 }
 
 
+/* Output graph in csv format */
+static void output_csv(const graph_t *graph)
+{
+    const node_list_t *caller, *callee;
+
+    printf("# caller, callee, program\n");
+    for (caller=graph->funcs; caller; caller=caller->next)
+      for (callee=caller->func->callees; callee; callee=callee->next)
+        printf("%s, %s, %s\n",
+               caller->func->str, callee->func->str, graph->filename);
+}
+
+
+/* Output graph in cypher (graph database) (neo4j) format */
+static void output_cypher(const graph_t *graph)
+{
+    const node_list_t *caller, *callee;
+
+    printf("CREATE (%s:Program)\n", graph->filename);
+    for (caller=graph->funcs; caller; caller=caller->next)
+      printf("CREATE (%s:Function)\n", caller->func->str);
+
+    /* Relations */
+    for (caller=graph->funcs; caller; caller=caller->next)
+      for (callee=caller->func->callees; callee; callee=callee->next)
+        printf("CREATE(%s)-[:CALLS {Program:%s}]->(%s)\n",
+               caller->func->str, graph->filename, callee->func->str);
+}
+
+
 /* Output graph in dot format */
 static void output_dot(const graph_t *graph)
 {
@@ -530,29 +561,43 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 
     /* Summarize */
     igraph_radius(&ig, &radius, IGRAPH_ALL);
-    printf("igraph summary: %s\n", fname);
-    printf("  * Number of Verticies: %d\n", igraph_vcount(&ig));
-    printf("  * Number of Edges:     %d\n", igraph_ecount(&ig));
-    printf("  * Radius:              %f\n", radius);
+    n_verts = igraph_vcount(&ig);
+    n_edges = igraph_ecount(&ig);
+
+    /* Cliques */
+    igraph_clique_number(&ig, &clique_num);
+
+    /* Connected components */
+    igraph_clusters(&ig, NULL, NULL, &n_weak, IGRAPH_WEAK);
+    igraph_clusters(&ig, NULL, NULL, &n_strong, IGRAPH_STRONG);
+
+    /* Nodes connected to main (including main) */
+    neighborhood = -1.0f;
     if (main_id)
     {
-        /* Nodes connected to main (including main) */
         igraph_vector_init(&vec, 0);
         igraph_vs_1(&vs, main_id);
         igraph_neighborhood_size(&ig, &vec, vs, 1, IGRAPH_ALL);
-        printf("  * main() Neighborhood: %f\n", VECTOR(vec)[0]);
+        neighborhood = VECTOR(vec)[0];
         igraph_vector_destroy(&vec);
     }
 
-    /* Cliques */
-    igraph_clique_number(&ig, &integer);
-    printf("  * Clique Number:       %d\n", integer);
+#if 0
+    printf("#igraph summary: %s\n", fname);
+    printf("  * Number of Verticies: %d\n", n_verts);
+    printf("  * Number of Edges:     %d\n", n_edges);
+    printf("  * Radius:              %f\n", radius);
+    printf("  * Clique Number:       %d\n", clique_num);
+    printf("  * Weakly Connected Components:   %d\n", n_weak);
+    printf("  * Strongly Connected Components: %d\n", n_strong);
+    printf("  * main() Neighborhood: %f\n", neighborhood);
+#endif
 
-    /* Connected components */
-    igraph_clusters(&ig, NULL, NULL, &integer, IGRAPH_WEAK);
-    printf("  * Weakly Connected Components:   %d\n", integer);
-    igraph_clusters(&ig, NULL, NULL, &integer, IGRAPH_STRONG);
-    printf("  * Strongly Connected Components: %d\n", integer);
+    //printf("#file, verts, edges, radius, clique number, "
+    //       "wcc, scc, neighborhood\n");
+    printf("%s, %d, %d, %.02f, %d, %d, %d, %.02f\n",
+           fname, n_verts, n_edges, radius, clique_num,
+           n_weak, n_strong, neighborhood);
 
     /* Cleanup */
     igraph_destroy(&ig);
@@ -563,20 +608,22 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 int main(int argc, char **argv)
 {
     int opt;
-    bool do_dot_output, do_igraph_summary;
+    bool do_csv_output, do_cypher_output, do_dot_output, do_igraph_summary;
     const char *fname;
     graph_t *graph;
 
     /* Default args */
     fname = NULL;
-    do_igraph_summary = do_dot_output = false;
+    do_csv_output=do_cypher_output=do_dot_output=do_igraph_summary = false;
 
-    while ((opt = getopt(argc, argv, "dsf:")) != -1)
+    while ((opt = getopt(argc, argv, "cdgsf:")) != -1)
     {
         switch (opt)
         {
             case 'f': fname = optarg; break;
+            case 'c': do_csv_output = true; break;
             case 'd': do_dot_output = true; break;
+            case 'g': do_cypher_output = true; break;
             case 's': do_igraph_summary = true; break;
             default:  usage(argv[0]); break;
         }
@@ -590,6 +637,10 @@ int main(int argc, char **argv)
     graph = build_graph(fname);
 
     /* Output the results */
+    if (do_csv_output)
+      output_csv(graph);
+    if (do_cypher_output)
+      output_cypher(graph);
     if (do_dot_output)
       output_dot(graph);
     if (do_igraph_summary)
