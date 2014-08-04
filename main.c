@@ -179,6 +179,8 @@ static func_t *add_node(graph_t *graph, const asymbol *sym, const char *str)
     else
       func->str = strdup("N/A");
 
+    DBG("Added node: %s", func->str);
+
     /* main() check */
     if (strcmp("main", func->str) == 0)
       main_id = func->id;
