@@ -14,6 +14,7 @@ $(APP): $(OBJS)
 .PHONY: test
 test: $(APP) test.c
 	$(CC) -o $@ test.c -g3 -O0
+	strip $@
 	./$(APP) -f ./$@ -d -s
 
 debug: $(APP)
