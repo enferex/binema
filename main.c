@@ -302,17 +302,17 @@ static int process_insn(void *stream, const char *fmt, ...)
     else if (have_call)
     {
         have_call = 0;
+        sym = addr_to_symbol(strtoll(str, NULL, 16));
         if (!bfd_find_nearest_line(bin, dis_info.section, symbols,
                                    curr_addr - start_addr,
                                    &fname, &fnname, &lineno))
         {
-            va_end(va);
-            return 0;
+           // va_end(va);
+           // return 0;
         }
 
         /* Create a new node to represent the callee and add it to the caller */
         graph = *(graph_t **)dis_info.application_data;
-        sym = addr_to_symbol(strtoll(str, NULL, 16));
         caller = find_func(graph, str_to_symbol(fnname));
         callee = sym ? find_func(graph, sym) : find_func_str(graph, str);
         add_callee(caller, callee);
@@ -380,7 +380,7 @@ static void get_symbols(bfd *bin)
     }
 
     /* TODO: For now exit if we only have dynamic symbols */
-    if (is_dynamic)
+    if (0 && is_dynamic)
       ERR("Could not locate any symbols (dynamic symbols not supported)");
 
     if (!(symbols = malloc(size)))
@@ -545,8 +545,8 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 #ifdef USE_IGRAPH
     igraph_t ig;
     igraph_vs_t vs;
-    igraph_integer_t integer;
-    igraph_real_t radius;
+    igraph_integer_t n_verts, n_edges, clique_num, n_weak, n_strong;
+    igraph_real_t radius, neighborhood;
     igraph_vector_t vec;
     const node_list_t *caller, *callee;
 
