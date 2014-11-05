@@ -22,3 +22,7 @@ debug: $(APP)
 
 clean:
 	$(RM) $(APP) $(OBJS) test
+
+CXX=g++
+knot: knot.cc
+	$(CXX) -std=c++11 -g3 -O0 $^ -o $@
