@@ -64,7 +64,7 @@
  * id values start at 1, 0 represents an invalid id
  */
 static unsigned id_pool = 1;
-static unsigned main_id = 0;
+static int main_id = -1;
 struct _func_t;
 typedef struct _node_list_t
 {
@@ -116,6 +116,9 @@ static void usage(const char *execname)
            "  -d:            Output callgraph in dot format\n"
 #ifdef USE_IGRAPH
            "  -s:            Output graph summary\n"
+#endif
+#ifdef USE_KNOT
+           "  -k:            Output knot summary\n"
 #endif
            , execname);
     exit(EXIT_SUCCESS);
@@ -543,10 +546,12 @@ static inline int count_edges(const graph_t *graph)
 static void output_igraph_summary(const graph_t *graph, const char *fname)
 {
 #ifdef USE_IGRAPH
+    long i;
     igraph_t ig;
     igraph_vs_t vs;
     igraph_integer_t n_verts, n_edges, clique_num, n_weak, n_strong;
-    igraph_real_t radius, neighborhood;
+    igraph_real_t radius, neighborhood, pagerank;
+    igraph_arpack_options_t aropts;
     igraph_vector_t vec;
     const node_list_t *caller, *callee;
 
@@ -577,16 +582,30 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
     igraph_clusters(&ig, NULL, NULL, &n_strong, IGRAPH_STRONG);
 
     /* Nodes connected to main (including main) */
-    neighborhood = -1.0f;
-    if (main_id)
+    pagerank = neighborhood = -1.0f;
+    if (main_id != -1)
     {
         igraph_vector_init(&vec, 0);
         igraph_vs_1(&vs, main_id);
         igraph_neighborhood_size(&ig, &vec, vs, 1, IGRAPH_ALL);
         neighborhood = VECTOR(vec)[0];
+        for (i=0; i<igraph_vector_size(&vec); ++i)
+        {
+            printf("[%ld of %ld] %f%s\n",
+                   i, igraph_vector_size(&vec),
+                   (double)VECTOR(vec)[i],
+                   i==main_id ? "<--" : "");
+        }
+        igraph_vector_destroy(&vec);
+
+        igraph_vector_init(&vec, 0);
+        igraph_arpack_options_init(&aropts);
+        igraph_pagerank(&ig, IGRAPH_PAGERANK_ALGO_PRPACK,
+                        &vec, 0, igraph_vss_all(),
+                        0, 0.85, 0, &aropts);
+        pagerank = VECTOR(vec)[main_id];
         igraph_vector_destroy(&vec);
     }
-
 #if 0
     printf("#igraph summary: %s\n", fname);
     printf("  * Number of Verticies: %d\n", n_verts);
@@ -600,35 +619,45 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 
     //printf("#file, verts, edges, radius, clique number, "
     //       "wcc, scc, neighborhood\n");
-    printf("%s, %d, %d, %.02f, %d, %d, %d, %.02f\n",
+    printf("%s, %d, %d, %.02f, %d, %d, %d, %.02f, %04f\n",
            fname, n_verts, n_edges, radius, clique_num,
-           n_weak, n_strong, neighborhood);
+           n_weak, n_strong, neighborhood, pagerank);
 
     /* Cleanup */
     igraph_destroy(&ig);
-#endif
+#endif /* USE_IGRAPH */
+}
+
+static void output_knot_summary(const graph_t *graph)
+{
+    node_
+#ifdef USE_KNOT
+#endif /* USE_KNOT */
 }
 
 
 int main(int argc, char **argv)
 {
     int opt;
-    bool do_csv_output, do_cypher_output, do_dot_output, do_igraph_summary;
+    bool do_csv_output, do_cypher_output, do_dot_output;
+    bool do_knot_summary, do_igraph_summary;
     const char *fname;
     graph_t *graph;
 
     /* Default args */
     fname = NULL;
-    do_csv_output=do_cypher_output=do_dot_output=do_igraph_summary = false;
+    do_csv_output = do_cypher_output = do_dot_output = false;
+    do_knot_summary = do_igraph_summary = false;
 
     while ((opt = getopt(argc, argv, "cdgsf:")) != -1)
     {
         switch (opt)
         {
-            case 'f': fname = optarg; break;
             case 'c': do_csv_output = true; break;
             case 'd': do_dot_output = true; break;
+            case 'f': fname = optarg; break;
             case 'g': do_cypher_output = true; break;
+            case 'k': do_knot_summary = true; break;
             case 's': do_igraph_summary = true; break;
             default:  usage(argv[0]); break;
         }
@@ -648,6 +677,8 @@ int main(int argc, char **argv)
       output_cypher(graph);
     if (do_dot_output)
       output_dot(graph);
+    if (do_knot_summary)
+      output_knot_summary(graph);
     if (do_igraph_summary)
       output_igraph_summary(graph, fname);
 

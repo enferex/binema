@@ -44,6 +44,8 @@ struct Graph
     return new Vertex(str);
 };
 
+// Transform a planar graph into a knot:
+// https://en.wikipedia.org/wiki/Knots_and_graphs#Medial_graph
 static void to_knot(const Graph &g)
 {
     // (0) For each vertex of G
@@ -57,6 +59,7 @@ static void to_knot(const Graph &g)
             // (1) Create set of incident egdes (and their corresponding vertex)
             // to the vertex.
             // vitr..e are the incident edges
+            incidents.push_back
         } 
     }
 
