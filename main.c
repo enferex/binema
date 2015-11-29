@@ -117,9 +117,6 @@ static void usage(const char *execname)
 #ifdef USE_IGRAPH
            "  -s:            Output graph summary\n"
 #endif
-#ifdef USE_KNOT
-           "  -k:            Output knot summary\n"
-#endif
            , execname);
     exit(EXIT_SUCCESS);
 }
@@ -628,26 +625,16 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
 #endif /* USE_IGRAPH */
 }
 
-static void output_knot_summary(const graph_t *graph)
-{
-    node_
-#ifdef USE_KNOT
-#endif /* USE_KNOT */
-}
-
-
 int main(int argc, char **argv)
 {
     int opt;
-    bool do_csv_output, do_cypher_output, do_dot_output;
-    bool do_knot_summary, do_igraph_summary;
+    bool do_igraph_summary, do_csv_output, do_cypher_output, do_dot_output;
     const char *fname;
     graph_t *graph;
 
     /* Default args */
     fname = NULL;
-    do_csv_output = do_cypher_output = do_dot_output = false;
-    do_knot_summary = do_igraph_summary = false;
+    do_csv_output = do_cypher_output = do_dot_output = do_igraph_summary=false;
 
     while ((opt = getopt(argc, argv, "cdgsf:")) != -1)
     {
@@ -657,7 +644,6 @@ int main(int argc, char **argv)
             case 'd': do_dot_output = true; break;
             case 'f': fname = optarg; break;
             case 'g': do_cypher_output = true; break;
-            case 'k': do_knot_summary = true; break;
             case 's': do_igraph_summary = true; break;
             default:  usage(argv[0]); break;
         }
@@ -677,8 +663,6 @@ int main(int argc, char **argv)
       output_cypher(graph);
     if (do_dot_output)
       output_dot(graph);
-    if (do_knot_summary)
-      output_knot_summary(graph);
     if (do_igraph_summary)
       output_igraph_summary(graph, fname);
 
