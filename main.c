@@ -612,10 +612,11 @@ static void output_igraph_summary(const graph_t *graph, const char *fname)
     printf("  * Weakly Connected Components:   %d\n", n_weak);
     printf("  * Strongly Connected Components: %d\n", n_strong);
     printf("  * main() Neighborhood: %f\n", neighborhood);
+    printf("  * Page Rank:           %f\n", pagerank);
 #endif
 
-    //printf("#file, verts, edges, radius, clique number, "
-    //       "wcc, scc, neighborhood\n");
+    printf("#file, verts, edges, radius, clique number, "
+           "wcc, scc, neighborhood, pagerank\n");
     printf("%s, %d, %d, %.02f, %d, %d, %d, %.02f, %04f\n",
            fname, n_verts, n_edges, radius, clique_num,
            n_weak, n_strong, neighborhood, pagerank);
